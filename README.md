@@ -88,12 +88,15 @@ IP address manually.
 | Temperature-controlled zones | `climate` per zone — off (close) / fan-only (open) / heat-cool (climate control) + zone setpoint |
 | Open/close & constant zones | `switch` per zone (on = damper open) |
 | iSave | `switch` (only if the system supports it) |
-| Supply / return air temperature | `sensor` |
+| Supply air temperature | `sensor` |
+| Control temperature | `sensor` — the temperature the unit is run from. The spec calls it return air, but on a zone-controlled system it is the control zone's temperature; attribute `control_zone` |
+| Control zone | `sensor` (diagnostic) — the zone the unit is following right now. It moves between zones, and the unit eases off as that zone nears its setpoint |
+| AC run hours | `sensor` (diagnostic, total increasing) — the controller's run-hours counter (`AcRunH`, not in the published spec) |
 | Zone temperature | `sensor` per zone with a sensor |
 | Damper position | `sensor` per zone (diagnostic) |
 | Wireless sensor battery | `sensor` (full/half/empty, diagnostic) |
 | Wireless sensor signal strength | `sensor` (full/half/quarter/none, diagnostic) |
-| Filter warning, damper fault, sensor fault | `binary_sensor` (diagnostic) |
+| Filter warning, damper fault, sensor fault | `binary_sensor` (diagnostic). The filter warning is the controller's reminder timer running out; attribute `reminder_interval_months` |
 | Bridge overloaded | `binary_sensor` (diagnostic) — on when commands are repeatedly failing |
 | Command failures (recent) | `sensor` (diagnostic) — count of failed commands in the last 5 min |
 | Pending zone changes | `sensor` (diagnostic) — zones still being brought to a scene's target; attributes say which and why |
@@ -174,6 +177,35 @@ set are exposed — empty slots are skipped. Favourites are discovered once when
 the integration starts, not on every poll, since they rarely change; reload the
 integration (Settings → Devices & Services → iZone V2 → ⋮ → Reload) after
 adding or renaming a favourite in the iZone app to pick up the change.
+
+Each favourite scene shows what it stores as attributes: `zones` (for example
+`Living: auto 20.0`, `Rumpus: close`), `fan` and `mode` (`unset` means the
+favourite leaves the unit's fan or mode alone), plus `favourite_number`.
+They're read at startup, and again whenever the scene is activated or edited.
+
+**Favourites can be edited from Home Assistant** with the
+`izone_v2.update_favourite` action, using the documented "Set Schedule Zone
+Settings", "Change Schedule AC Fan" and "Change Schedule AC Mode" commands. The
+edit is saved on the controller, so the iZone app and wall controller see it
+too. Nothing is applied until the favourite is next activated.
+
+```yaml
+action: izone_v2.update_favourite
+target:
+  entity_id: scene.izone_000104158_morning_heating
+data:
+  zone: Front office    # name as in the iZone app, any case, or zone number
+  zone_mode: close      # open | close | auto
+  # temperature: 19     # 15-30 in 0.5 steps; leave out to keep the stored one
+  # fan: high           # unset | low | medium | high | auto | top
+  # mode: heat          # unset | cool | heat | vent | dry | auto
+```
+
+One call changes one zone, but the fan and mode can go in the same call.
+Constant (bypass) zones are refused, because the controller manages them. So is
+`auto` on a zone without a temperature sensor. The integration reads the
+favourite back afterwards and reports an error if the controller didn't keep
+the change.
 
 When a favourite scene is activated, the integration **reads the zones back and
 confirms** they match the favourite's stored config, re-applying a couple of
